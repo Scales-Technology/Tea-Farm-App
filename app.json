@@ -1,65 +1,46 @@
 {
   "expo": {
-    "name": "BLEScaleApp",
+    "name": "TeaFarm Pro",
     "slug": "ble-scale-app",
+    "scheme": "teafarm",
     "version": "1.0.0",
     "orientation": "portrait",
-    "newArchEnabled": false,
     "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#1B5E20"
     },
+    "platforms": [
+      "android",
+      "ios"
+    ],
     "android": {
-      "package": "com.bleapp.scaleapp",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#1B5E20"
       },
-      "permissions": [
-        "android.permission.BLUETOOTH",
-        "android.permission.BLUETOOTH_ADMIN",
-        "android.permission.BLUETOOTH_SCAN",
-        "android.permission.BLUETOOTH_CONNECT",
-        "android.permission.BLUETOOTH_ADVERTISE",
-        "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_COARSE_LOCATION"
-      ]
+      "package": "com.bleapp.scaleapp",
+      "googleServicesFile": "./android/google-services.json"
     },
     "ios": {
-      "bundleIdentifier": "com.bleapp.scaleapp",
-      "infoPlist": {
-        "NSBluetoothAlwaysUsageDescription": "This app needs Bluetooth to connect to your scale.",
-        "NSBluetoothPeripheralUsageDescription": "This app needs Bluetooth to connect to your scale.",
-        "NSLocationWhenInUseUsageDescription": "Location is required for Bluetooth scanning."
-      }
+      "supportsTablet": true,
+      "bundleIdentifier": "com.bleapp.scaleapp"
     },
     "plugins": [
-      [
-        "react-native-ble-plx",
-        {
-          "isBackgroundEnabled": false,
-          "modes": [
-            "central"
-          ],
-          "bluetoothAlwaysPermission": "Allow BLE Scale App to connect to Bluetooth devices"
-        }
-      ],
+      "@react-native-firebase/app",
+      "@react-native-firebase/auth",
       [
         "expo-build-properties",
         {
           "android": {
-            "minSdkVersion": 24,
-            "compileSdkVersion": 34,
-            "targetSdkVersion": 34
-          },
-          "ios": {
-            "deploymentTarget": "15.1"
+            "usesCleartextTraffic": true
           }
         }
       ]
     ],
+    "main": "node_modules/expo/AppEntry.js",
     "extra": {
       "eas": {
         "projectId": "609a5501-a3a0-458e-8f75-b2c03bc2a704"
