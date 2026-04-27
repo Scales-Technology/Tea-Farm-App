@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "964555602209",
+    "project_id": "teafarmapp-92c80",
+    "storage_bucket": "teafarmapp-92c80.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:964555602209:android:2dab4acfbb8575cbdaa660",
+        "android_client_info": {
+          "package_name": "com.bleapp.scaleapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyARmbrP-vsozRZxJdBrMgaytwm_0r7s64Y"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
