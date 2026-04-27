@@ -1,4 +1,3 @@
-// ─── Main Navigation ──────────────────────────────────────────────────────────
 import React, { useEffect, useState } from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
@@ -6,8 +5,6 @@ import { View, ActivityIndicator, StyleSheet } from "react-native";
 import { onAuthStateChanged, getCurrentUserProfile } from "../firebase/auth";
 import { User } from "../types";
 import { colors } from "../theme";
-
-// Screens
 import LoginScreen from "../screens/auth/LoginScreen";
 import AdminNavigator from "./AdminNavigator";
 import CollectorNavigator from "./CollectorNavigator";
@@ -17,7 +14,7 @@ import SupervisorDashboard from "../screens/supervisor/SupervisorDashboard";
 const Stack = createNativeStackNavigator();
 
 export default function Navigation() {
-  const [user, setUser]       = useState<User | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -66,9 +63,9 @@ export default function Navigation() {
 
 const styles = StyleSheet.create({
   loading: {
-    flex:            1,
-    justifyContent:  "center",
-    alignItems:      "center",
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
     backgroundColor: colors.background,
   },
 });
