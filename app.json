@@ -38,13 +38,15 @@
             "usesCleartextTraffic": true
           }
         }
-      ]
+      ],
+      "./plugins/withBtPrinterFix"
     ],
     "main": "node_modules/expo/AppEntry.js",
     "extra": {
       "eas": {
-        "projectId": "609a5501-a3a0-458e-8f75-b2c03bc2a704"
+        "projectId": "04006012-d37c-4b74-9efe-612fa6795009"
       }
-    }
+    },
+    "owner": "drakemmm"
   }
 }

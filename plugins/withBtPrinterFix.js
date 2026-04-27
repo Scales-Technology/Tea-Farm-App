@@ -1,4 +1,3 @@
-cat > (plugins / withBtPrinterFix.js) << "EOF";
 const { withProjectBuildGradle } = require("@expo/config-plugins");
 
 module.exports = function withBtPrinterFix(config) {
@@ -22,4 +21,3 @@ subprojects {
     return config;
   });
 };
-EOF;
