@@ -1,4 +1,3 @@
-// ─── App Entry Point ──────────────────────────────────────────────────────────
 import React from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { StyleSheet } from "react-native";

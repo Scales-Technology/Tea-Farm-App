@@ -5,7 +5,9 @@
     "esModuleInterop": true,
     "isolatedModules": true,
     "jsx": "react-native",
-    "lib": ["es2017"],
+    "lib": [
+      "es2017"
+    ],
     "moduleResolution": "bundler",
     "noEmit": true,
     "strict": false,
@@ -14,6 +16,13 @@
     "resolveJsonModule": true,
     "target": "ES2020"
   },
-  "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.d.ts", "expo-env.d.ts"],
-  "exclude": ["node_modules"]
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    ".expo/types/**/*.d.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ],
+  "extends": "expo/tsconfig.base"
 }
