@@ -22,7 +22,7 @@
         "backgroundColor": "#1B5E20"
       },
       "package": "com.bleapp.scaleapp",
-      "googleServicesFile": "./android/google-services.json"
+      "googleServicesFile": "./google-services.json"
     },
     "ios": {
       "supportsTablet": true,
