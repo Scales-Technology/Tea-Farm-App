@@ -1,31 +1,27 @@
-// ─── Firebase Auth Service ────────────────────────────────────────────────────
-
-import { firebaseAuth, db, COLLECTIONS, serverTimestamp } from "./config";
+import {
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signOut,
+  sendPasswordResetEmail,
+  onAuthStateChanged as firebaseOnAuthStateChanged,
+} from "firebase/auth";
+import { doc, getDoc, setDoc, collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { auth, db } from "../services/firebase";
 import { User, UserRole } from "../types";
 
-// ─── Login ────────────────────────────────────────────────────────────────────
+const USERS      = "users";
+const AUDIT_LOGS = "audit_logs";
 
-export const loginUser = async (
-  email: string,
-  password: string
-): Promise<User> => {
-  const credential = await firebaseAuth().signInWithEmailAndPassword(
-    email.trim().toLowerCase(),
-    password
-  );
+// ── Login ─────────────────────────────────────────────────────────────────────
+export const loginUser = async (email: string, password: string): Promise<User> => {
+  const credential = await signInWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
+  const uid        = credential.user.uid;
+  const userDoc    = await getDoc(doc(db, USERS, uid));
 
-  const uid = credential.user.uid;
-  const userDoc = await db().collection(COLLECTIONS.USERS).doc(uid).get();
-
-  if (!userDoc.exists) {
-    throw new Error("User account not found. Contact your administrator.");
-  }
+  if (!userDoc.exists()) throw new Error("User account not found. Contact your administrator.");
 
   const data = userDoc.data()!;
-
-  if (!data.isActive) {
-    throw new Error("Your account has been deactivated. Contact your administrator.");
-  }
+  if (!data.isActive) throw new Error("Your account has been deactivated. Contact your administrator.");
 
   return {
     id:             uid,
@@ -39,24 +35,18 @@ export const loginUser = async (
   };
 };
 
-// ─── Logout ───────────────────────────────────────────────────────────────────
-
+// ── Logout ────────────────────────────────────────────────────────────────────
 export const logoutUser = async (): Promise<void> => {
-  await firebaseAuth().signOut();
+  await signOut(auth);
 };
 
-// ─── Get current user profile ─────────────────────────────────────────────────
-
+// ── Get current user profile ──────────────────────────────────────────────────
 export const getCurrentUserProfile = async (): Promise<User | null> => {
-  const firebaseUser = firebaseAuth().currentUser;
+  const firebaseUser = auth.currentUser;
   if (!firebaseUser) return null;
 
-  const userDoc = await db()
-    .collection(COLLECTIONS.USERS)
-    .doc(firebaseUser.uid)
-    .get();
-
-  if (!userDoc.exists) return null;
+  const userDoc = await getDoc(doc(db, USERS, firebaseUser.uid));
+  if (!userDoc.exists()) return null;
 
   const data = userDoc.data()!;
   return {
@@ -71,8 +61,7 @@ export const getCurrentUserProfile = async (): Promise<User | null> => {
   };
 };
 
-// ─── Create employee account (Admin only) ─────────────────────────────────────
-
+// ── Create employee account (Admin only) ──────────────────────────────────────
 export const createEmployeeAccount = async (
   name: string,
   email: string,
@@ -83,14 +72,14 @@ export const createEmployeeAccount = async (
   createdByName: string,
   createdById: string
 ): Promise<string> => {
-  const credential = await firebaseAuth().createUserWithEmailAndPassword(
+  const credential = await createUserWithEmailAndPassword(
+    auth,
     email.trim().toLowerCase(),
     password
   );
-
   const uid = credential.user.uid;
 
-  await db().collection(COLLECTIONS.USERS).doc(uid).set({
+  await setDoc(doc(db, USERS, uid), {
     name,
     email:          email.trim().toLowerCase(),
     role,
@@ -100,8 +89,7 @@ export const createEmployeeAccount = async (
     createdAt:      serverTimestamp(),
   });
 
-  // Audit log
-  await db().collection(COLLECTIONS.AUDIT_LOGS).add({
+  await addDoc(collection(db, AUDIT_LOGS), {
     actorId:        createdById,
     actorName:      createdByName,
     actorRole:      "admin",
@@ -115,16 +103,12 @@ export const createEmployeeAccount = async (
   return uid;
 };
 
-// ─── Reset password ───────────────────────────────────────────────────────────
-
+// ── Reset password ────────────────────────────────────────────────────────────
 export const resetPassword = async (email: string): Promise<void> => {
-  await firebaseAuth().sendPasswordResetEmail(email.trim().toLowerCase());
+  await sendPasswordResetEmail(auth, email.trim().toLowerCase());
 };
 
-// ─── Auth state listener ──────────────────────────────────────────────────────
-
-export const onAuthStateChanged = (
-  callback: (user: any) => void
-) => {
-  return firebaseAuth().onAuthStateChanged(callback);
+// ── Auth state listener ───────────────────────────────────────────────────────
+export const onAuthStateChanged = (callback: (user: any) => void) => {
+  return firebaseOnAuthStateChanged(auth, callback);
 };
