@@ -1,0 +1,122 @@
+<svg width="100%" viewBox="0 0 680 680" role="img">
+  <title>TeaFarm logo with falling leaves</title>
+  <desc>Circular green logo with tea leaf, animated steam, Tea Farm text inside, and continuously falling tea leaves around it</desc>
+
+  <defs>
+    <style>
+      .spin { transform-origin: 340px 340px; animation: rotateSlow 12s linear infinite; }
+      .leafPulse { animation: pulse 3s ease-in-out infinite; transform-origin: 340px 320px; }
+      .steam1 { animation: steamRise 2.8s ease-in-out infinite; }
+      .steam2 { animation: steamRise 2.8s ease-in-out infinite 0.9s; }
+      .steam3 { animation: steamRise 2.8s ease-in-out infinite 1.8s; }
+      .dropBounce { animation: dropFall 2.8s ease-in-out infinite; }
+      .fl1  { animation: fall1  4.2s linear infinite; }
+      .fl2  { animation: fall2  5.8s linear infinite 0.6s; }
+      .fl3  { animation: fall3  4.9s linear infinite 1.2s; }
+      .fl4  { animation: fall4  6.1s linear infinite 0.3s; }
+      .fl5  { animation: fall5  5.2s linear infinite 1.8s; }
+      .fl6  { animation: fall6  4.6s linear infinite 2.4s; }
+      .fl7  { animation: fall7  5.5s linear infinite 0.9s; }
+      .fl8  { animation: fall8  4.8s linear infinite 3.1s; }
+      .fl9  { animation: fall9  6.3s linear infinite 1.5s; }
+      .fl10 { animation: fall10 5.0s linear infinite 2.8s; }
+      .fl11 { animation: fall11 4.4s linear infinite 0.4s; }
+      .fl12 { animation: fall12 5.7s linear infinite 3.6s; }
+      @keyframes rotateSlow { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+      @keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.04)} }
+      @keyframes steamRise {
+        0%{opacity:0;transform:translateY(0)} 30%{opacity:0.9}
+        70%{opacity:0.4;transform:translateY(-36px) scaleX(1.3)}
+        100%{opacity:0;transform:translateY(-58px) scaleX(0.8)}
+      }
+      @keyframes dropFall {
+        0%,100%{transform:translateY(0);opacity:1} 50%{transform:translateY(8px);opacity:0.7}
+      }
+      @keyframes fall1  { 0%{transform:translate(0,0) rotate(0deg);opacity:0} 10%{opacity:1} 90%{opacity:0.6} 100%{transform:translate(-18px,660px) rotate(320deg);opacity:0} }
+      @keyframes fall2  { 0%{transform:translate(0,0) rotate(20deg);opacity:0} 10%{opacity:1} 90%{opacity:0.5} 100%{transform:translate(22px,660px) rotate(-280deg);opacity:0} }
+      @keyframes fall3  { 0%{transform:translate(0,0) rotate(-10deg);opacity:0} 10%{opacity:1} 90%{opacity:0.7} 100%{transform:translate(15px,660px) rotate(300deg);opacity:0} }
+      @keyframes fall4  { 0%{transform:translate(0,0) rotate(35deg);opacity:0} 10%{opacity:1} 90%{opacity:0.4} 100%{transform:translate(-25px,660px) rotate(-340deg);opacity:0} }
+      @keyframes fall5  { 0%{transform:translate(0,0) rotate(-20deg);opacity:0} 10%{opacity:1} 90%{opacity:0.6} 100%{transform:translate(20px,660px) rotate(310deg);opacity:0} }
+      @keyframes fall6  { 0%{transform:translate(0,0) rotate(10deg);opacity:0} 10%{opacity:1} 90%{opacity:0.5} 100%{transform:translate(-12px,660px) rotate(-290deg);opacity:0} }
+      @keyframes fall7  { 0%{transform:translate(0,0) rotate(-30deg);opacity:0} 10%{opacity:1} 90%{opacity:0.7} 100%{transform:translate(28px,660px) rotate(330deg);opacity:0} }
+      @keyframes fall8  { 0%{transform:translate(0,0) rotate(15deg);opacity:0} 10%{opacity:1} 90%{opacity:0.5} 100%{transform:translate(-20px,660px) rotate(-310deg);opacity:0} }
+      @keyframes fall9  { 0%{transform:translate(0,0) rotate(-5deg);opacity:0} 10%{opacity:1} 90%{opacity:0.6} 100%{transform:translate(16px,660px) rotate(280deg);opacity:0} }
+      @keyframes fall10 { 0%{transform:translate(0,0) rotate(40deg);opacity:0} 10%{opacity:1} 90%{opacity:0.4} 100%{transform:translate(-30px,660px) rotate(-350deg);opacity:0} }
+      @keyframes fall11 { 0%{transform:translate(0,0) rotate(-15deg);opacity:0} 10%{opacity:1} 90%{opacity:0.7} 100%{transform:translate(24px,660px) rotate(320deg);opacity:0} }
+      @keyframes fall12 { 0%{transform:translate(0,0) rotate(25deg);opacity:0} 10%{opacity:1} 90%{opacity:0.5} 100%{transform:translate(-16px,660px) rotate(-300deg);opacity:0} }
+    </style>
+    <clipPath id="cc"><circle cx="340" cy="340" r="290"/></clipPath>
+  </defs>
+
+  <!-- falling leaves -->
+  <g class="fl1"  style="transform-origin:80px -10px"><path d="M80,-10 C86,-4,90,6,84,14 C78,20,68,18,64,10 C60,2,66,-8,76,-12 C78,-11,80,-10,80,-10Z" fill="#2ecc71" opacity="0.8"/><path d="M80,-10 C76,2,72,10,68,14" fill="none" stroke="#1a7a40" stroke-width="1" stroke-linecap="round"/></g>
+  <g class="fl2"  style="transform-origin:140px -30px"><path d="M140,-30 C147,-23,150,-12,143,-4 C136,4,124,2,120,-6 C116,-14,122,-26,132,-30 C135,-31,140,-30,140,-30Z" fill="#27ae60" opacity="0.75"/><path d="M140,-30 C136,-18,132,-8,128,-4" fill="none" stroke="#1a7a40" stroke-width="1" stroke-linecap="round"/></g>
+  <g class="fl3"  style="transform-origin:55px 60px"><path d="M55,60 C62,67,64,78,57,85 C50,91,40,88,37,80 C34,72,40,61,50,58 C52,57,55,60,55,60Z" fill="#4aba72" opacity="0.7"/><path d="M55,60 C51,72,48,80,45,85" fill="none" stroke="#1a7a40" stroke-width="1" stroke-linecap="round"/></g>
+  <g class="fl4"  style="transform-origin:30px 180px"><path d="M30,180 C38,187,40,198,33,205 C26,211,16,208,13,200 C10,192,16,181,26,178 C28,177,30,180,30,180Z" fill="#2ecc71" opacity="0.65"/><path d="M30,180 C26,192,23,200,20,205" fill="none" stroke="#1a7a40" stroke-width="1" stroke-linecap="round"/></g>
+  <g class="fl5"  style="transform-origin:620px -20px"><path d="M620,-20 C627,-13,630,-2,623,6 C616,13,605,10,602,2 C599,-6,605,-17,615,-21 C618,-22,620,-20,620,-20Z" fill="#27ae60" opacity="0.8"/><path d="M620,-20 C616,-8,612,2,608,6" fill="none" stroke="#1a7a40" stroke-width="1" stroke-linecap="round"/></g>
+  <g class="fl6"  style="transform-origin:560px 10px"><path d="M560,10 C567,17,570,28,563,36 C556,43,545,40,542,32 C539,24,545,13,555,9 C558,8,560,10,560,10Z" fill="#4aba72" opacity="0.7"/><path d="M560,10 C556,22,552,32,548,36" fill="none" stroke="#1a7a40" stroke-width="1" stroke-linecap="round"/></g>
+  <g class="fl7"  style="transform-origin:640px 120px"><path d="M640,120 C648,127,650,138,643,146 C636,153,625,150,622,142 C619,134,625,122,635,119 C638,118,640,120,640,120Z" fill="#2ecc71" opacity="0.75"/><path d="M640,120 C636,132,632,142,628,146" fill="none" stroke="#1a7a40" stroke-width="1" stroke-linecap="round"/></g>
+  <g class="fl8"  style="transform-origin:600px 220px"><path d="M600,220 C607,227,610,238,603,246 C596,253,585,250,582,242 C579,234,585,222,595,219 C598,218,600,220,600,220Z" fill="#27ae60" opacity="0.65"/><path d="M600,220 C596,232,592,242,588,246" fill="none" stroke="#1a7a40" stroke-width="1" stroke-linecap="round"/></g>
+  <g class="fl9"  style="transform-origin:200px -40px"><path d="M200,-40 C208,-33,210,-22,203,-14 C196,-7,185,-10,182,-18 C179,-26,185,-37,195,-41 C198,-42,200,-40,200,-40Z" fill="#4aba72" opacity="0.8"/><path d="M200,-40 C196,-28,192,-18,188,-14" fill="none" stroke="#1a7a40" stroke-width="1" stroke-linecap="round"/></g>
+  <g class="fl10" style="transform-origin:480px -15px"><path d="M480,-15 C488,-8,490,3,483,11 C476,18,465,15,462,7 C459,-1,465,-12,475,-16 C478,-17,480,-15,480,-15Z" fill="#2ecc71" opacity="0.7"/><path d="M480,-15 C476,-3,472,7,468,11" fill="none" stroke="#1a7a40" stroke-width="1" stroke-linecap="round"/></g>
+  <g class="fl11" style="transform-origin:100px 300px"><path d="M100,300 C108,307,110,318,103,326 C96,333,85,330,82,322 C79,314,85,302,95,299 C98,298,100,300,100,300Z" fill="#27ae60" opacity="0.75"/><path d="M100,300 C96,312,92,322,88,326" fill="none" stroke="#1a7a40" stroke-width="1" stroke-linecap="round"/></g>
+  <g class="fl12" style="transform-origin:650px 300px"><path d="M650,300 C658,307,660,318,653,326 C646,333,635,330,632,322 C629,314,635,302,645,299 C648,298,650,300,650,300Z" fill="#4aba72" opacity="0.7"/><path d="M650,300 C646,312,642,322,638,326" fill="none" stroke="#1a7a40" stroke-width="1" stroke-linecap="round"/></g>
+
+  <!-- logo circle -->
+  <circle cx="340" cy="340" r="290" fill="#1a4a2e"/>
+  <circle cx="340" cy="340" r="270" fill="none" stroke="#2d6e45" stroke-width="3"/>
+  <circle cx="340" cy="340" r="254" fill="none" stroke="#2d6e45" stroke-width="1"/>
+  <g class="spin">
+    <circle cx="340" cy="340" r="280" fill="none" stroke="#3a8a56" stroke-width="2" stroke-dasharray="18 10" stroke-linecap="round"/>
+  </g>
+  <circle cx="340" cy="58"  r="5" fill="#4aba72"/>
+  <circle cx="340" cy="622" r="5" fill="#4aba72"/>
+  <circle cx="58"  cy="340" r="5" fill="#4aba72"/>
+  <circle cx="622" cy="340" r="5" fill="#4aba72"/>
+
+  <!-- tea leaf -->
+  <g class="leafPulse">
+    <path d="M340 155 C400 185,460 255,450 330 C440 405,390 450,340 460 C290 450,240 405,230 330 C220 255,280 185,340 155Z" fill="#2ecc71" opacity="0.15"/>
+    <path d="M340 178 C385 203,428 265,420 332 C412 398,374 438,340 446 C306 438,268 398,260 332 C252 265,295 203,340 178Z" fill="#27ae60"/>
+    <path d="M340 192 C372 212,404 262,398 326 C393 376,370 410,350 425 C330 410,308 376,302 326 C297 262,310 212,340 192Z" fill="#2ecc71" opacity="0.5"/>
+    <path d="M340 192 C340 290,340 380,340 442" fill="none" stroke="#1a7a40" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M340 245 C322 255,305 263,292 274" fill="none" stroke="#1a7a40" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/>
+    <path d="M340 282 C318 294,298 304,283 317" fill="none" stroke="#1a7a40" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/>
+    <path d="M340 318 C320 330,302 340,288 353" fill="none" stroke="#1a7a40" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/>
+    <path d="M340 354 C323 366,308 375,296 387" fill="none" stroke="#1a7a40" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/>
+    <path d="M340 245 C358 255,375 263,388 274" fill="none" stroke="#1a7a40" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/>
+    <path d="M340 282 C362 294,382 304,397 317" fill="none" stroke="#1a7a40" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/>
+    <path d="M340 318 C360 330,378 340,392 353" fill="none" stroke="#1a7a40" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/>
+    <path d="M340 354 C357 366,372 375,384 387" fill="none" stroke="#1a7a40" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/>
+    <path d="M340 178 C348 165,358 158,365 151 C352 153,344 161,340 178Z" fill="#4aba72"/>
+  </g>
+
+  <!-- steam -->
+  <g class="steam1" style="transform-origin:310px 235px">
+    <path d="M310 235 C304 223,316 213,310 200" fill="none" stroke="#a8e6bf" stroke-width="3.5" stroke-linecap="round" opacity="0.85"/>
+  </g>
+  <g class="steam2" style="transform-origin:340px 225px">
+    <path d="M340 225 C334 210,346 197,340 183" fill="none" stroke="#a8e6bf" stroke-width="4" stroke-linecap="round" opacity="0.85"/>
+  </g>
+  <g class="steam3" style="transform-origin:370px 235px">
+    <path d="M370 235 C364 223,376 213,370 200" fill="none" stroke="#a8e6bf" stroke-width="3.5" stroke-linecap="round" opacity="0.85"/>
+  </g>
+
+  <!-- tea drop -->
+  <g class="dropBounce">
+    <path d="M340 458 C334 470,326 482,326 490 C326 502,332 510,340 510 C348 510,354 502,354 490 C354 482,346 470,340 458Z" fill="#4aba72"/>
+    <ellipse cx="337" cy="488" rx="4" ry="6" fill="#6dcc8e" opacity="0.6"/>
+  </g>
+
+  <!-- accent leaves -->
+  <path d="M188 210 C196 198,214 196,222 208 C214 214,198 218,188 210Z" fill="#4aba72" opacity="0.7"/>
+  <path d="M176 230 C182 216,200 212,210 222 C202 230,184 236,176 230Z" fill="#2ecc71" opacity="0.5"/>
+  <path d="M492 210 C484 198,466 196,458 208 C466 214,482 218,492 210Z" fill="#4aba72" opacity="0.7"/>
+  <path d="M504 230 C498 216,480 212,470 222 C478 230,496 236,504 230Z" fill="#2ecc71" opacity="0.5"/>
+
+  <!-- Tea Farm text inside -->
+  <text x="340" y="572" text-anchor="middle"
+        font-family="'Georgia', serif" font-size="52" font-weight="700"
+        letter-spacing="5" fill="#ffffff">Tea Farm</text>
+
+</svg>

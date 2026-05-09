@@ -7,6 +7,7 @@ import EmployeesScreen from "../screens/admin/EmployeesScreen";
 import FarmersScreen from "../screens/admin/FarmersScreen";
 import ReportsScreen from "../screens/admin/ReportsScreen";
 import ExpensesScreen from "../screens/admin/ExpensesScreen";
+import AuditScreen from "../screens/admin/AuditScreen";
 
 const Tab = createBottomTabNavigator();
 
@@ -23,9 +24,10 @@ export default function AdminNavigator() {
           const icons: any = {
             Dashboard: "🏠",
             Employees: "👥",
-            Farmers: "👨‍🌾",
-            Reports: "📊",
-            Expenses: "💰",
+            Farmers:   "👨‍🌾",
+            Reports:   "📊",
+            Expenses:  "💰",
+            Audit:     "🔍",
           };
           return (
             <Text style={{ fontSize: 22, opacity: focused ? 1 : 0.5 }}>
@@ -37,9 +39,10 @@ export default function AdminNavigator() {
     >
       <Tab.Screen name="Dashboard" component={AdminDashboard} options={{ tabBarLabel: "Home" }} />
       <Tab.Screen name="Employees" component={EmployeesScreen} options={{ tabBarLabel: "Employees" }} />
-      <Tab.Screen name="Farmers" component={FarmersScreen} options={{ tabBarLabel: "Farmers" }} />
-      <Tab.Screen name="Reports" component={ReportsScreen} options={{ tabBarLabel: "Reports" }} />
-      <Tab.Screen name="Expenses" component={ExpensesScreen} options={{ tabBarLabel: "Expenses" }} />
+      <Tab.Screen name="Farmers"   component={FarmersScreen}   options={{ tabBarLabel: "Farmers" }} />
+      <Tab.Screen name="Reports"   component={ReportsScreen}   options={{ tabBarLabel: "Reports" }} />
+      <Tab.Screen name="Expenses"  component={ExpensesScreen}  options={{ tabBarLabel: "Expenses" }} />
+      <Tab.Screen name="Audit"     component={AuditScreen}     options={{ tabBarLabel: "Audit" }} />
     </Tab.Navigator>
   );
 }
@@ -47,15 +50,15 @@ export default function AdminNavigator() {
 const styles = StyleSheet.create({
   tabBar: {
     backgroundColor: colors.surface,
-    borderTopColor: colors.border,
-    borderTopWidth: 1,
-    height: 65,
-    paddingBottom: 10,
-    paddingTop: 6,
-    elevation: 8,
+    borderTopColor:  colors.border,
+    borderTopWidth:  1,
+    height:          65,
+    paddingBottom:   10,
+    paddingTop:      6,
+    elevation:       8,
   },
   tabLabel: {
-    fontSize: fonts.sizes.xs,
+    fontSize:   fonts.sizes.xs,
     fontWeight: "600",
   },
 });
