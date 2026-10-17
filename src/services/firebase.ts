@@ -4,7 +4,6 @@ import { getAuth } from "firebase/auth";
 import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
-  const firebaseConfig = {
   apiKey: "AIzaSyBam61zYjleDv-crKhgxisqZA-Zg6jYMYY",
   authDomain: "tea-farm-app-8e460.firebaseapp.com",
   projectId: "tea-farm-app-8e460",
