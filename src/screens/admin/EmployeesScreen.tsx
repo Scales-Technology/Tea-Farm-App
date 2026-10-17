@@ -134,6 +134,14 @@ export default function EmployeesScreen() {
 
   // ── Restrict / Enable ──────────────────────────────────────────────────────
   const handleToggleAccess = (emp: Employee) => {
+    // The admin is the farm's owner and the one creating every other
+    // account -- there's no one else to restrict them on behalf of, so
+    // this action is blocked for admin accounts rather than offered and
+    // then rejected server-side.
+    if (emp.role === "admin") {
+      Alert.alert("Not allowed", "The admin account is the farm owner and can't be restricted.");
+      return;
+    }
     if (emp.isDeactivated) {
       Alert.alert("Deactivated", "This account is permanently deactivated and cannot be changed.");
       return;
@@ -165,6 +173,13 @@ export default function EmployeesScreen() {
 
   // ── Deactivate permanently ─────────────────────────────────────────────────
   const handleDeactivate = (emp: Employee) => {
+    // Same reasoning as handleToggleAccess above: the admin owns the farm
+    // and created every other account here, so the admin account itself
+    // is never a valid target for permanent deactivation.
+    if (emp.role === "admin") {
+      Alert.alert("Not allowed", "The admin account is the farm owner and can't be deactivated.");
+      return;
+    }
     if (emp.isDeactivated) {
       Alert.alert("Already Deactivated", `${emp.name}'s account is already permanently deactivated.`);
       return;
@@ -322,7 +337,15 @@ export default function EmployeesScreen() {
                   <Text style={[styles.roleBadgeText, { color: rc.color }]}>{rc.label}</Text>
                 </View>
 
-                {!isDeactivated ? (
+                {emp.role === "admin" ? (
+                  // The admin is the farm owner -- there's no "Restrict" /
+                  // "Deactivate" action to offer on this account, so the
+                  // buttons are left out entirely rather than shown and
+                  // then rejected.
+                  <View style={styles.deactivatedNote}>
+                    <Text style={styles.deactivatedNoteText}>👑 Owner account — can't be restricted or deactivated</Text>
+                  </View>
+                ) : !isDeactivated ? (
                   <View style={styles.actionsRow}>
                     <TouchableOpacity
                       style={[styles.actionBtn, { backgroundColor: emp.isActive ? colors.warningLight : colors.successLight, flex: 1 }]}

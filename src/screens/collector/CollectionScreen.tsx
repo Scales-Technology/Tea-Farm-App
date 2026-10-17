@@ -12,6 +12,11 @@ import {
 import { getAuth } from "@react-native-firebase/auth";
 import { colors, fonts, spacing, radius, shadows } from "../../theme";
 import { useBLE } from "../../hooks/useBLE";
+import { useClassicBluetooth } from "../../hooks/useClassicBluetooth";
+import ScaleSelectorModal, { ScaleType } from "../../components/ScaleSelectorModal";
+import { usePrinter } from "../../hooks/usePrinter";
+import PrinterModal from "../../components/PrinterModal";
+import { buildCollectionReceipt } from "../../utils/receipt";
 import { COLLECTIONS } from "../../firebase/auth";
 import TeaLoader from "../../components/TeaLoader";
 import NetInfo from "@react-native-community/netinfo";
@@ -59,13 +64,6 @@ const generateBatchNumber = (): string => {
   return `BATCH-${date}-${rand}`;
 };
 
-const formatTime = (ts: any): string => {
-  try {
-    const d = ts?.toDate ? ts.toDate() : new Date(ts);
-    return d.toLocaleTimeString("en-KE", { hour: "2-digit", minute: "2-digit", hour12: true });
-  } catch { return "—"; }
-};
-
 const formatDateTime = (ts: any): string => {
   try {
     const d = ts?.toDate ? ts.toDate() : new Date(ts);
@@ -98,10 +96,16 @@ export default function CollectionScreen({ navigation, route }: any) {
   const [history,        setHistory]        = useState<CollectionRecord[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [isOffline,      setIsOffline]      = useState(false);
+  const [activeScaleType, setActiveScaleType] = useState<ScaleType>("ble");
+  const [showPrinterModal, setShowPrinterModal] = useState(false);
+  const [printStatus,   setPrintStatus]   = useState<"idle" | "printing" | "printed" | "failed" | "skipped">("idle");
+  const [printError,    setPrintError]    = useState("");
+  const [lastReceipt,   setLastReceipt]   = useState<string | null>(null);
 
   const orgIdRef     = useRef("");
   const actorNameRef = useRef("");
   const actorIdRef   = useRef("");
+  const roleRef      = useRef("");
 
   // ── BLE ───────────────────────────────────────────────────────────────────
   const {
@@ -111,6 +115,107 @@ export default function CollectionScreen({ navigation, route }: any) {
     captureWeight, clearSavedDevice,
   } = useBLE();
 
+  // ── Classic Bluetooth ─────────────────────────────────────────────────────
+  // useClassicBluetooth now uses rn-bluetooth-classic's useBluetooth hook
+  // internally — receivedData is reactive, base64 decoded correctly,
+  // and isAutoConnecting is separate from isConnecting.
+  const {
+    pairedDevices:        classicPairedDevices,
+    connectedDevice:      classicConnectedDevice,
+    scaleReading:         classicScaleReading,
+    capturedWeight:       classicCapturedWeight,
+    savedDevice:          classicSavedDevice,
+    isConnecting:         classicIsConnecting,
+    isAutoConnecting:     classicIsAutoConnecting,   // ← NEW
+    isScanning:           classicIsScanning,
+    isEnabled:            classicIsEnabled,
+    error:                classicError,
+    getPairedDevices:     classicGetPaired,
+    connectToDevice:      classicConnect,
+    disconnect:           classicDisconnect,
+    clearSavedDevice:     classicClearSaved,
+    captureWeight:        classicCapture,
+    enableBluetooth:      classicEnableBt,
+  } = useClassicBluetooth();
+
+  // ── Receipt printer (classic Bluetooth, for both BLE and classic scales) ──
+  const printer = usePrinter();
+  const printerStatusColor = !printer.settings.printerAddress
+    ? colors.error
+    : printer.connected ? colors.success : colors.warning;
+
+  // Receipts are printed for the collector supervisor only. This screen is only
+  // reachable from the collector navigator; an unknown role (offline profile
+  // read) is allowed, any other role is not.
+  const canPrintReceipts = () =>
+    roleRef.current === "" || roleRef.current === "collector_supervisor";
+
+  const runPrint = async (text: string) => {
+    setPrintStatus("printing");
+    setPrintError("");
+    try {
+      await printer.print(text);
+      setPrintStatus("printed");
+    } catch (e: any) {
+      setPrintStatus("failed");
+      setPrintError(e?.message || "Printer error.");
+    }
+  };
+
+  // ── Unified scale abstractions ────────────────────────────────────────────
+  const activeScaleReading   = activeScaleType === "ble" ? scaleReading   : classicScaleReading;
+  const activeCapturedWeight = activeScaleType === "ble" ? capturedWeight : classicCapturedWeight;
+  const activeWeight: number = useManual
+    ? (parseFloat(manualWeight) || 0)
+    : (activeCapturedWeight?.weight ?? activeScaleReading?.weight ?? 0);
+  const activeUnit           = activeCapturedWeight?.unit ?? activeScaleReading?.unit ?? "kg";
+  const activeConnected      = activeScaleType === "ble" ? !!connectedDevice : !!classicConnectedDevice;
+
+  // FIX: Classic now uses isAutoConnecting OR isConnecting (both mean "working
+  // on connecting"), but only when not yet connected — mirrors BLE pattern.
+  const activeConnecting = activeScaleType === "ble"
+    ? (isAutoConnecting && !connectedDevice)
+    : (classicIsAutoConnecting || classicIsConnecting) && !classicConnectedDevice;
+
+  const activeSavedDevice = activeScaleType === "ble" ? savedDevice : classicSavedDevice;
+
+  // ── Unified capture / disconnect helpers ──────────────────────────────────
+  const handleCaptureWeight = () => {
+    if (activeScaleType === "ble") captureWeight();
+    else classicCapture();
+  };
+  const handleDisconnect = () => {
+    if (activeScaleType === "ble") disconnect();
+    else classicDisconnect();
+  };
+  const handleClearSaved = () => {
+    if (activeScaleType === "ble") clearSavedDevice();
+    else classicClearSaved();
+    Alert.alert("Cleared", "Saved scale removed.");
+  };
+
+  // ── Unified scale status UI helpers ──────────────────────────────────────
+  const scaleStatusColor = activeConnected
+    ? colors.success
+    : activeConnecting
+    ? colors.warning
+    : colors.error;
+
+  const scaleStatusLabel = (() => {
+    if (activeConnected) {
+      const name = activeScaleType === "ble"
+        ? (connectedDevice?.name || savedDevice?.name || "BLE Scale")
+        : (classicConnectedDevice?.name || classicSavedDevice?.name || "Classic Scale");
+      return name;
+    }
+    if (activeConnecting) return "Connecting...";
+    if (activeSavedDevice) return `Saved: ${activeSavedDevice.name}`;
+    return "No scale";
+  })();
+
+  const scaleTypeLabel = activeScaleType === "ble" ? "BLE" : "Classic";
+
+  // ── Pulse animation ───────────────────────────────────────────────────────
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const pulseLoop = useRef<any>(null);
 
@@ -123,16 +228,15 @@ export default function CollectionScreen({ navigation, route }: any) {
     );
     pulseLoop.current.start();
   };
-
   const stopPulse = () => {
     if (pulseLoop.current) pulseLoop.current.stop();
     pulseAnim.setValue(1);
   };
 
   useEffect(() => {
-    if (scaleReading?.isStable) startPulse(); else stopPulse();
+    if (activeScaleReading?.isStable) startPulse(); else stopPulse();
     return stopPulse;
-  }, [scaleReading?.isStable]);
+  }, [activeScaleReading?.isStable]);
 
   // ── Load sources ──────────────────────────────────────────────────────────
   const loadData = useCallback(async () => {
@@ -140,7 +244,6 @@ export default function CollectionScreen({ navigation, route }: any) {
       const uid = auth.currentUser?.uid;
       if (!uid) return;
 
-      // ── Check connectivity first ──────────────────────────────────────
       const network = await NetInfo.fetch();
       const online  = !!network.isConnected && !!network.isInternetReachable;
       setIsOffline(!online);
@@ -152,13 +255,13 @@ export default function CollectionScreen({ navigation, route }: any) {
       orgIdRef.current     = oid;
       actorNameRef.current = me.name || "Collector";
       actorIdRef.current   = uid;
+      roleRef.current      = me.role || "";
       if (!oid) return;
 
       const col      = sourceType === "plucker" ? COLLECTIONS.PLUCKERS : "farmers";
       const cacheKey = `sources_${col}_${oid}`;
 
       if (!online) {
-        // ── Offline: serve from cache ─────────────────────────────────
         const cached = await loadCache<Source[]>(cacheKey);
         if (cached) {
           setSources(cached);
@@ -170,14 +273,13 @@ export default function CollectionScreen({ navigation, route }: any) {
         return;
       }
 
-      // ── Online: fetch fresh then cache ────────────────────────────────
       const snap = await getDocs(query(collection(db, col), where("organizationId", "==", oid)));
       const list = snap.docs
         .map(d => ({ id: d.id, ...d.data() } as Source))
         .filter((s: any) => s.isActive !== false)
         .sort((a, b) => a.name.localeCompare(b.name));
       setSources(list);
-      await saveCache(cacheKey, list); // ← cache for next offline use
+      await saveCache(cacheKey, list);
 
       if (preSourceId && preSourceName) {
         const found = list.find(s => s.id === preSourceId);
@@ -212,7 +314,6 @@ export default function CollectionScreen({ navigation, route }: any) {
     finally { setHistoryLoading(false); }
   }, []);
 
-  // Load history when switching to history tab
   useEffect(() => {
     if (weighTab === "history" && orgIdRef.current) loadHistory();
   }, [weighTab, loadHistory]);
@@ -222,7 +323,6 @@ export default function CollectionScreen({ navigation, route }: any) {
     const today = new Date().toISOString().split("T")[0];
     const todayRecs = history.filter(r => r.date === today);
 
-    // Per-person totals
     const personMap: Record<string, { name: string; type: string; totalKg: number; records: CollectionRecord[] }> = {};
     todayRecs.forEach(r => {
       if (!personMap[r.sourceId]) {
@@ -232,11 +332,9 @@ export default function CollectionScreen({ navigation, route }: any) {
       personMap[r.sourceId].records.push(r);
     });
 
-    const persons = Object.values(personMap).sort((a, b) => b.totalKg - a.totalKg);
-
-    const pluckerRecs = todayRecs.filter(r => r.sourceType === "plucker");
-    const farmerRecs  = todayRecs.filter(r => r.sourceType === "farmer");
-
+    const persons       = Object.values(personMap).sort((a, b) => b.totalKg - a.totalKg);
+    const pluckerRecs   = todayRecs.filter(r => r.sourceType === "plucker");
+    const farmerRecs    = todayRecs.filter(r => r.sourceType === "farmer");
     const totalPluckers = Math.round(pluckerRecs.reduce((s, r) => s + (r.weightKg || 0), 0) * 100) / 100;
     const totalFarmers  = Math.round(farmerRecs.reduce( (s, r) => s + (r.weightKg || 0), 0) * 100) / 100;
     const grandTotal    = Math.round((totalPluckers + totalFarmers) * 100) / 100;
@@ -252,12 +350,6 @@ export default function CollectionScreen({ navigation, route }: any) {
     setManualWeight(""); setNotes("");
     setStep("weigh"); setWeighTab("weigh");
   };
-
-  const activeWeight: number = useManual
-    ? (parseFloat(manualWeight) || 0)
-    : (capturedWeight?.weight ?? scaleReading?.weight ?? 0);
-
-  const activeUnit = capturedWeight?.unit ?? scaleReading?.unit ?? "kg";
 
   const handleSave = async () => {
     if (!selectedSource) return Alert.alert("Error", "No source selected.");
@@ -276,26 +368,26 @@ export default function CollectionScreen({ navigation, route }: any) {
       organizationId: orgIdRef.current,
       recordedBy:     actorNameRef.current,
       recordedById:   actorIdRef.current,
+      scaleType:      activeScaleType,
     };
 
     setSaving(true);
+    setPrintStatus("idle");
+    setPrintError("");
     try {
-      // ── offlineSave: writes to Firestore if online, queues if offline ──
       const result = await offlineSave(COLLECTIONS.COLLECTIONS, record);
 
-      // Audit log — also offline-safe
       await offlineSave(COLLECTIONS.AUDIT_LOGS, {
         actorId:        actorIdRef.current,
         actorName:      actorNameRef.current,
         actorRole:      "collector_supervisor",
-        action:         `Recorded collection: ${selectedSource.name} — ${activeWeight}${activeUnit} (${batchNumber})`,
+        action:         `Recorded collection: ${selectedSource.name} — ${activeWeight}${activeUnit} (${batchNumber}) via ${activeScaleType === "ble" ? "BLE" : "Classic BT"}`,
         module:         "collections",
         outcome:        "success",
         organizationId: orgIdRef.current,
         referenceId:    result.id || batchNumber,
       });
 
-      // Add to local history immediately (works online AND offline)
       const newRec: CollectionRecord = {
         id:          result.id || `offline_${Date.now()}`,
         batchNumber, sourceType,
@@ -310,12 +402,32 @@ export default function CollectionScreen({ navigation, route }: any) {
       };
       setHistory(prev => [newRec, ...prev]);
       setIsOffline(!result.savedOnline);
-
       setSavedCount(prev => prev + 1);
       setLastRecord({ ...record, id: newRec.id, savedOnline: result.savedOnline });
       setShowSuccess(true);
 
-      // Notify user if saved offline
+      // ── Receipt for the plucker / farmer who brought the tea ──
+      const receiptText = buildCollectionReceipt({
+        sourceType,
+        name:        selectedSource.name,
+        idNumber:    selectedSource.idNumber,
+        place:       sourceType === "plucker"
+          ? (selectedSource.pluckZone || selectedSource.location)
+          : (selectedSource.farmName  || selectedSource.location),
+        phone:       selectedSource.phone,
+        batchNumber,
+        weight:      activeWeight,
+        unit:        activeUnit,
+        notes:       notes.trim(),
+        servedBy:    actorNameRef.current,
+      });
+      setLastReceipt(receiptText);
+      if (canPrintReceipts() && printer.settings.autoPrint) {
+        runPrint(receiptText);          // runs in the background; result shows in the success card
+      } else {
+        setPrintStatus("skipped");
+      }
+
       if (!result.savedOnline) {
         setTimeout(() => {
           Alert.alert(
@@ -323,9 +435,8 @@ export default function CollectionScreen({ navigation, route }: any) {
             "No network detected. This record is saved on your device and will automatically sync to the cloud when you reconnect.",
             [{ text: "OK" }]
           );
-        }, 600); // slight delay so success modal shows first
+        }, 600);
       }
-
     } catch (e: any) {
       Alert.alert("Save Failed", e.message || "Could not save collection record.");
     } finally { setSaving(false); }
@@ -353,10 +464,6 @@ export default function CollectionScreen({ navigation, route }: any) {
     (s.farmName  || "").toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const scaleConnected  = !!connectedDevice;
-  const scaleConnecting = isAutoConnecting && !connectedDevice;
-  const scaleStatusColor = scaleConnected ? colors.success : scaleConnecting ? colors.warning : colors.error;
-
   if (loading) return <TeaLoader message="Loading Collection..." subMessage="Collector Supervisor" />;
 
   return (
@@ -378,8 +485,15 @@ export default function CollectionScreen({ navigation, route }: any) {
               >
                 <View style={[styles.scaleDot, { backgroundColor: scaleStatusColor }]} />
                 <Text style={[styles.scalePillText, { color: scaleStatusColor }]}>
-                  {scaleConnected ? "⚖️ Scale" : scaleConnecting ? "🔄" : "⚠️ Scale"}
+                  {activeConnected ? `⚖️ ${scaleTypeLabel}` : activeConnecting ? "🔄" : `⚠️ ${scaleTypeLabel}`}
                 </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.scalePill, { marginLeft: 6, backgroundColor: printerStatusColor + "30", borderColor: printerStatusColor }]}
+                onPress={() => setShowPrinterModal(true)}
+              >
+                <View style={[styles.scaleDot, { backgroundColor: printerStatusColor }]} />
+                <Text style={[styles.scalePillText, { color: printerStatusColor }]}>🖨️</Text>
               </TouchableOpacity>
             </View>
 
@@ -417,12 +531,25 @@ export default function CollectionScreen({ navigation, route }: any) {
 
           <View style={styles.searchWrap}>
             <Text style={styles.searchIcon}>🔍</Text>
-            <TextInput style={styles.searchInput} placeholder={`Search ${sourceType === "plucker" ? "pluckers" : "farmers"}...`}
-              placeholderTextColor={colors.textMuted} value={searchQuery} onChangeText={setSearchQuery} autoCapitalize="none" />
-            {searchQuery.length > 0 && <TouchableOpacity onPress={() => setSearchQuery("")}><Text style={{ fontSize: 16, color: colors.textMuted }}>✕</Text></TouchableOpacity>}
+            <TextInput
+              style={styles.searchInput}
+              placeholder={`Search ${sourceType === "plucker" ? "pluckers" : "farmers"}...`}
+              placeholderTextColor={colors.textMuted}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              autoCapitalize="none"
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery("")}>
+                <Text style={{ fontSize: 16, color: colors.textMuted }}>✕</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
-          <ScrollView style={styles.flex1} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}
+          <ScrollView
+            style={styles.flex1}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={[colors.collectorColor]} tintColor={colors.collectorColor} />}
           >
             {filtered.length === 0 ? (
@@ -465,7 +592,6 @@ export default function CollectionScreen({ navigation, route }: any) {
       {/* ════ STEP 2 — WEIGH & HISTORY ════ */}
       {step === "weigh" && selectedSource && (
         <View style={styles.flex1}>
-          {/* Weigh header */}
           <View style={styles.weighHeader}>
             <TouchableOpacity style={styles.backBtn} onPress={() => {
               if (preSourceId) navigation.goBack();
@@ -483,25 +609,32 @@ export default function CollectionScreen({ navigation, route }: any) {
             >
               <View style={[styles.scaleDot, { backgroundColor: scaleStatusColor }]} />
               <Text style={[styles.scalePillText, { color: scaleStatusColor }]}>
-                {scaleConnected ? "⚖️ ON" : scaleConnecting ? "🔄" : "⚠️"}
+                {activeConnected ? `⚖️ ${scaleTypeLabel}` : activeConnecting ? "🔄" : "⚠️"}
               </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.scalePill, { marginLeft: 6, backgroundColor: printerStatusColor + "30", borderColor: printerStatusColor }]}
+              onPress={() => setShowPrinterModal(true)}
+            >
+              <View style={[styles.scaleDot, { backgroundColor: printerStatusColor }]} />
+              <Text style={[styles.scalePillText, { color: printerStatusColor }]}>🖨️</Text>
             </TouchableOpacity>
           </View>
 
-          {/* Offline banner */}
           {isOffline && (
             <View style={[styles.offlineBanner, { marginHorizontal: spacing.md, marginTop: spacing.sm, borderRadius: radius.md }]}>
               <Text style={styles.offlineBannerText}>📴 Offline mode — records queued for sync</Text>
             </View>
           )}
 
-          {/* Sub-tabs */}
           <View style={styles.subTabRow}>
             <TouchableOpacity style={[styles.subTab, weighTab === "weigh" && styles.subTabActive]} onPress={() => setWeighTab("weigh")}>
               <Text style={[styles.subTabText, weighTab === "weigh" && styles.subTabTextActive]}>⚖️ Record Weight</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.subTab, weighTab === "history" && styles.subTabActive]}
-              onPress={() => { setWeighTab("history"); if (orgIdRef.current) loadHistory(); }}>
+            <TouchableOpacity
+              style={[styles.subTab, weighTab === "history" && styles.subTabActive]}
+              onPress={() => { setWeighTab("history"); if (orgIdRef.current) loadHistory(); }}
+            >
               <Text style={[styles.subTabText, weighTab === "history" && styles.subTabTextActive]}>
                 📊 Today's Records {history.length > 0 ? `(${history.length})` : ""}
               </Text>
@@ -512,7 +645,6 @@ export default function CollectionScreen({ navigation, route }: any) {
           {weighTab === "weigh" && (
             <ScrollView style={styles.flex1} contentContainerStyle={styles.weighContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
-              {/* Source info card */}
               <View style={styles.sourceInfoCard}>
                 <View style={[styles.sourceInfoAvatar, { backgroundColor: colors.collectorLight }]}>
                   <Text style={[styles.sourceInfoAvatarText, { color: colors.collectorColor }]}>{selectedSource.name.charAt(0).toUpperCase()}</Text>
@@ -524,44 +656,88 @@ export default function CollectionScreen({ navigation, route }: any) {
                   {selectedSource.paymentMethod && (
                     <Text style={styles.sourceInfoMeta}>💳 {selectedSource.paymentMethod}{selectedSource.paymentDuration ? ` · ${selectedSource.paymentDuration}` : ""}</Text>
                   )}
-                  {/* This person's total today */}
                   {(() => {
-                    const personTotal = history.filter(r => r.sourceId === selectedSource.id).reduce((s, r) => s + (r.weightKg || 0), 0);
+                    const personRecs  = history.filter(r => r.sourceId === selectedSource.id);
+                    const personTotal = personRecs.reduce((s, r) => s + (r.weightKg || 0), 0);
                     if (personTotal > 0) return (
                       <View style={styles.personTodayBadge}>
-                        <Text style={styles.personTodayText}>Today so far: {personTotal.toFixed(2)} kg ({history.filter(r => r.sourceId === selectedSource.id).length} batch{history.filter(r => r.sourceId === selectedSource.id).length !== 1 ? "es" : ""})</Text>
+                        <Text style={styles.personTodayText}>
+                          Today so far: {personTotal.toFixed(2)} kg ({personRecs.length} batch{personRecs.length !== 1 ? "es" : ""})
+                        </Text>
                       </View>
                     );
                   })()}
                 </View>
               </View>
 
+              {/* ── Scale type toggle (BLE / Classic) ── */}
+              <View style={styles.scaleTypeToggle}>
+                <TouchableOpacity
+                  style={[styles.scaleTypeBtn, activeScaleType === "ble" && styles.scaleTypeBtnActive]}
+                  onPress={() => setActiveScaleType("ble")}
+                >
+                  <Text style={styles.scaleTypeIcon}>📡</Text>
+                  <Text style={[styles.scaleTypeText, activeScaleType === "ble" && styles.scaleTypeTextActive]}>BLE Scale</Text>
+                  {connectedDevice && <View style={styles.scaleTypeActiveDot} />}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.scaleTypeBtn, activeScaleType === "classic" && styles.scaleTypeBtnActive]}
+                  onPress={() => { setActiveScaleType("classic"); if (!classicIsEnabled) classicEnableBt(); }}
+                >
+                  <Text style={styles.scaleTypeIcon}>🔵</Text>
+                  <Text style={[styles.scaleTypeText, activeScaleType === "classic" && styles.scaleTypeTextActive]}>Classic BT</Text>
+                  {classicConnectedDevice && <View style={[styles.scaleTypeActiveDot, { backgroundColor: colors.primary }]} />}
+                </TouchableOpacity>
+              </View>
+
+              {/* Classic BT: not enabled warning */}
+              {activeScaleType === "classic" && !classicIsEnabled && (
+                <TouchableOpacity style={styles.btEnableCard} onPress={classicEnableBt}>
+                  <Text style={styles.btEnableIcon}>🔵</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.btEnableTitle}>Bluetooth is off</Text>
+                    <Text style={styles.btEnableSub}>Tap to enable Classic Bluetooth</Text>
+                  </View>
+                  <Text style={styles.btEnableArrow}>→</Text>
+                </TouchableOpacity>
+              )}
+
+              {/* Classic BT: error */}
+              {activeScaleType === "classic" && classicError && (
+                <View style={styles.btErrorCard}>
+                  <Text style={styles.btErrorText}>⚠️ {classicError}</Text>
+                </View>
+              )}
+
               {/* Scale display */}
-              <View style={[styles.scaleDisplay, { borderColor: scaleConnected ? (scaleReading?.isStable ? colors.success : colors.collectorColor) : colors.border }]}>
+              <View style={[styles.scaleDisplay, { borderColor: activeConnected ? (activeScaleReading?.isStable ? colors.success : colors.collectorColor) : colors.border }]}>
                 <View style={[styles.scaleStatusBar, { backgroundColor: scaleStatusColor }]}>
-                  <View style={[styles.scaleStatusDot]} />
-                  <Text style={styles.scaleStatusText}>
-                    {scaleConnected ? (connectedDevice?.name || savedDevice?.name || "BLE Scale") : scaleConnecting ? "Connecting..." : savedDevice ? `Saved: ${savedDevice.name}` : "No scale"}
-                  </Text>
+                  <View style={styles.scaleStatusDot} />
+                  <Text style={styles.scaleStatusText}>{scaleStatusLabel}</Text>
                   <TouchableOpacity onPress={() => setShowBLEModal(true)}>
                     <Text style={styles.scaleManageText}>Manage</Text>
                   </TouchableOpacity>
                 </View>
 
                 <View style={styles.scaleWeightWrap}>
-                  {scaleConnected && !useManual ? (
+                  {activeConnected && !useManual ? (
                     <>
                       <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
-                        <Text style={[styles.scaleWeightValue, { color: scaleReading?.isStable ? colors.success : colors.collectorColor }]}>
-                          {scaleReading ? scaleReading.weight.toFixed(2) : "0.00"}
+                        <Text style={[styles.scaleWeightValue, { color: activeScaleReading?.isStable ? colors.success : colors.collectorColor }]}>
+                          {activeScaleReading ? activeScaleReading.weight.toFixed(2) : "0.00"}
                         </Text>
                       </Animated.View>
-                      <Text style={styles.scaleWeightUnit}>{scaleReading?.unit ?? "kg"}</Text>
-                      <View style={[styles.stabilitBadge, { backgroundColor: scaleReading?.isStable ? colors.successLight : colors.warningLight }]}>
-                        <Text style={[styles.stabilityText, { color: scaleReading?.isStable ? colors.success : colors.warning }]}>
-                          {scaleReading?.isStable ? "✅ STABLE — Ready to capture" : "⏳ Stabilizing..."}
+                      <Text style={styles.scaleWeightUnit}>{activeScaleReading?.unit ?? "kg"}</Text>
+                      <View style={[styles.stabilitBadge, { backgroundColor: activeScaleReading?.isStable ? colors.successLight : colors.warningLight }]}>
+                        <Text style={[styles.stabilityText, { color: activeScaleReading?.isStable ? colors.success : colors.warning }]}>
+                          {activeScaleReading?.isStable ? "✅ STABLE — Ready to capture" : "⏳ Stabilizing..."}
                         </Text>
                       </View>
+                      {activeScaleType === "classic" && !!(classicScaleReading as any)?.raw && (
+                        <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 6, textAlign: "center" }}>
+                          {"Scale sends: " + String((classicScaleReading as any).raw).slice(-40)}
+                        </Text>
+                      )}
                     </>
                   ) : useManual ? (
                     <>
@@ -576,17 +752,17 @@ export default function CollectionScreen({ navigation, route }: any) {
                   ) : (
                     <View style={styles.scaleOfflineWrap}>
                       <Text style={styles.scaleOfflineIcon}>⚖️</Text>
-                      <Text style={styles.scaleOfflineText}>{scaleConnecting ? "Connecting to scale..." : "Scale not connected"}</Text>
+                      <Text style={styles.scaleOfflineText}>{activeConnecting ? "Connecting to scale..." : "Scale not connected"}</Text>
                       <Text style={styles.scaleOfflineSub}>Tap "Manage" to connect or enter weight manually</Text>
                     </View>
                   )}
                 </View>
 
-                {capturedWeight && !useManual && (
+                {activeCapturedWeight && !useManual && (
                   <View style={styles.capturedBanner}>
                     <View>
                       <Text style={styles.capturedBannerLabel}>📌 Captured Weight</Text>
-                      <Text style={styles.capturedBannerValue}>{capturedWeight.weight.toFixed(2)} {capturedWeight.unit}</Text>
+                      <Text style={styles.capturedBannerValue}>{activeCapturedWeight.weight.toFixed(2)} {activeCapturedWeight.unit}</Text>
                     </View>
                     <View style={[styles.capturedBadge, { backgroundColor: colors.success }]}>
                       <Text style={styles.capturedBadgeText}>LOCKED ✓</Text>
@@ -595,19 +771,26 @@ export default function CollectionScreen({ navigation, route }: any) {
                 )}
 
                 <View style={styles.scaleActions}>
-                  {scaleConnected && !useManual && (
+                  {activeConnected && !useManual && (
                     <TouchableOpacity
-                      style={[styles.captureBtn, { backgroundColor: scaleReading?.isStable ? colors.success : colors.border }]}
-                      onPress={captureWeight} disabled={!scaleReading?.isStable} activeOpacity={0.85}
+                      style={[styles.captureBtn, { backgroundColor: activeScaleReading?.isStable ? colors.success : colors.border }]}
+                      onPress={handleCaptureWeight}
+                      disabled={!activeScaleReading?.isStable}
+                      activeOpacity={0.85}
                     >
                       <Text style={styles.captureBtnIcon}>📌</Text>
-                      <Text style={[styles.captureBtnText, { color: scaleReading?.isStable ? "#fff" : colors.textMuted }]}>
-                        {capturedWeight ? "Re-Capture" : "Capture Weight"}
+                      <Text style={[styles.captureBtnText, { color: activeScaleReading?.isStable ? "#fff" : colors.textMuted }]}>
+                        {activeCapturedWeight ? "Re-Capture" : "Capture Weight"}
                       </Text>
                     </TouchableOpacity>
                   )}
-                  <TouchableOpacity style={[styles.manualBtn, useManual && styles.manualBtnActive]} onPress={() => { setUseManual(!useManual); setManualWeight(""); }}>
-                    <Text style={[styles.manualBtnText, useManual && { color: colors.primary }]}>{useManual ? "↩ Use Scale" : "✏️ Manual"}</Text>
+                  <TouchableOpacity
+                    style={[styles.manualBtn, useManual && styles.manualBtnActive]}
+                    onPress={() => { setUseManual(!useManual); setManualWeight(""); }}
+                  >
+                    <Text style={[styles.manualBtnText, useManual && { color: colors.primary }]}>
+                      {useManual ? "↩ Use Scale" : "✏️ Manual"}
+                    </Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -617,8 +800,15 @@ export default function CollectionScreen({ navigation, route }: any) {
                   <Text style={styles.manualInputLabel}>Enter Weight (kg)</Text>
                   <View style={styles.manualInputWrap}>
                     <Text style={styles.manualInputIcon}>⚖️</Text>
-                    <TextInput style={styles.manualInput} value={manualWeight} onChangeText={setManualWeight}
-                      placeholder="e.g. 12.50" placeholderTextColor={colors.textMuted} keyboardType="decimal-pad" autoFocus />
+                    <TextInput
+                      style={styles.manualInput}
+                      value={manualWeight}
+                      onChangeText={setManualWeight}
+                      placeholder="e.g. 12.50"
+                      placeholderTextColor={colors.textMuted}
+                      keyboardType="decimal-pad"
+                      autoFocus
+                    />
                     <Text style={styles.manualInputSuffix}>kg</Text>
                   </View>
                 </View>
@@ -636,8 +826,16 @@ export default function CollectionScreen({ navigation, route }: any) {
 
               <View style={styles.notesCard}>
                 <Text style={styles.notesLabel}>📝 Notes (optional)</Text>
-                <TextInput style={styles.notesInput} value={notes} onChangeText={setNotes}
-                  placeholder="Any notes about this collection..." placeholderTextColor={colors.textMuted} multiline numberOfLines={2} textAlignVertical="top" />
+                <TextInput
+                  style={styles.notesInput}
+                  value={notes}
+                  onChangeText={setNotes}
+                  placeholder="Any notes about this collection..."
+                  placeholderTextColor={colors.textMuted}
+                  multiline
+                  numberOfLines={2}
+                  textAlignVertical="top"
+                />
               </View>
 
               <View style={styles.summaryCard}>
@@ -647,12 +845,15 @@ export default function CollectionScreen({ navigation, route }: any) {
                 <SummaryRow icon="⚖️" label="Weight" value={activeWeight > 0 ? `${activeWeight.toFixed(2)} ${activeUnit}` : "—"} highlight={activeWeight > 0} />
                 <SummaryRow icon="🔢" label="Batch No." value={batchNumber} />
                 <SummaryRow icon="📅" label="Date" value={new Date().toLocaleDateString("en-KE", { day: "2-digit", month: "short", year: "numeric" })} />
+                <SummaryRow icon={activeScaleType === "ble" ? "📡" : "🔵"} label="Scale Type" value={activeScaleType === "ble" ? "BLE Bluetooth" : "Classic Bluetooth"} />
                 {notes.trim() && <SummaryRow icon="📝" label="Notes" value={notes.trim()} />}
               </View>
 
               <TouchableOpacity
                 style={[styles.saveBtn, (activeWeight <= 0 || saving) && styles.saveBtnDisabled]}
-                onPress={handleSave} disabled={saving || activeWeight <= 0} activeOpacity={0.85}
+                onPress={handleSave}
+                disabled={saving || activeWeight <= 0}
+                activeOpacity={0.85}
               >
                 <Text style={styles.saveBtnText}>
                   {saving ? "💾 Saving..." : activeWeight > 0 ? `✅ Save ${activeWeight.toFixed(2)} ${activeUnit} — ${selectedSource.name}` : "⚖️ Capture weight first"}
@@ -664,7 +865,10 @@ export default function CollectionScreen({ navigation, route }: any) {
 
           {/* ── HISTORY TAB ── */}
           {weighTab === "history" && (
-            <ScrollView style={styles.flex1} contentContainerStyle={styles.historyContent} showsVerticalScrollIndicator={false}
+            <ScrollView
+              style={styles.flex1}
+              contentContainerStyle={styles.historyContent}
+              showsVerticalScrollIndicator={false}
               refreshControl={<RefreshControl refreshing={historyLoading} onRefresh={loadHistory} colors={[colors.collectorColor]} tintColor={colors.collectorColor} />}
             >
               {historyLoading && history.length === 0 ? (
@@ -680,7 +884,6 @@ export default function CollectionScreen({ navigation, route }: any) {
                 </View>
               ) : (
                 <>
-                  {/* ── Per-person breakdown ── */}
                   {historyStats.persons.map((person, pi) => {
                     const personRecs = person.records.sort((a, b) => {
                       const aT = a.createdAt?.toDate?.()?.getTime() || (a.createdAt instanceof Date ? a.createdAt.getTime() : 0);
@@ -690,7 +893,6 @@ export default function CollectionScreen({ navigation, route }: any) {
                     const isCurrentPerson = selectedSource && person.records[0]?.sourceId === selectedSource.id;
                     return (
                       <View key={personRecs[0]?.sourceId || pi} style={[styles.personGroup, isCurrentPerson && styles.personGroupHighlighted]}>
-                        {/* Person header */}
                         <View style={styles.personGroupHeader}>
                           <View style={[styles.personGroupAvatar, { backgroundColor: person.type === "plucker" ? colors.collectorLight : colors.primaryPale }]}>
                             <Text style={[styles.personGroupAvatarText, { color: person.type === "plucker" ? colors.collectorColor : colors.primary }]}>
@@ -707,16 +909,13 @@ export default function CollectionScreen({ navigation, route }: any) {
                           </View>
                         </View>
 
-                        {/* Individual weight records */}
-                        {personRecs.map((rec, ri) => (
+                        {personRecs.map((rec) => (
                           <View key={rec.id} style={styles.weightRecordRow}>
                             <View style={styles.weightRecordLeft}>
                               <View style={styles.weightRecordDot} />
                               <View>
                                 <Text style={styles.weightRecordBatch}>{rec.batchNumber}</Text>
-                                <Text style={styles.weightRecordTime}>
-                                  🕐 {formatDateTime(rec.createdAt)}
-                                </Text>
+                                <Text style={styles.weightRecordTime}>🕐 {formatDateTime(rec.createdAt)}</Text>
                                 {rec.notes ? <Text style={styles.weightRecordNotes}>💬 {rec.notes}</Text> : null}
                               </View>
                             </View>
@@ -727,7 +926,6 @@ export default function CollectionScreen({ navigation, route }: any) {
                           </View>
                         ))}
 
-                        {/* Person subtotal */}
                         <View style={styles.personSubtotalRow}>
                           <Text style={styles.personSubtotalLabel}>
                             {person.name} Total ({personRecs.length} batch{personRecs.length !== 1 ? "es" : ""})
@@ -740,7 +938,6 @@ export default function CollectionScreen({ navigation, route }: any) {
                     );
                   })}
 
-                  {/* ── Grand Totals Card ── */}
                   <View style={styles.grandTotalsCard}>
                     <Text style={styles.grandTotalsTitle}>📊 Today's Collection Totals</Text>
 
@@ -753,9 +950,7 @@ export default function CollectionScreen({ navigation, route }: any) {
                             <Text style={styles.grandTotalSub}>{history.filter(r => r.sourceType === "plucker").length} batches · {new Set(history.filter(r => r.sourceType === "plucker").map(r => r.sourceId)).size} pluckers</Text>
                           </View>
                         </View>
-                        <Text style={[styles.grandTotalValue, { color: colors.collectorColor }]}>
-                          {historyStats.totalPluckers.toFixed(2)} kg
-                        </Text>
+                        <Text style={[styles.grandTotalValue, { color: colors.collectorColor }]}>{historyStats.totalPluckers.toFixed(2)} kg</Text>
                       </View>
                     )}
 
@@ -770,9 +965,7 @@ export default function CollectionScreen({ navigation, route }: any) {
                               <Text style={styles.grandTotalSub}>{history.filter(r => r.sourceType === "farmer").length} batches · {new Set(history.filter(r => r.sourceType === "farmer").map(r => r.sourceId)).size} farmers</Text>
                             </View>
                           </View>
-                          <Text style={[styles.grandTotalValue, { color: colors.primary }]}>
-                            {historyStats.totalFarmers.toFixed(2)} kg
-                          </Text>
+                          <Text style={[styles.grandTotalValue, { color: colors.primary }]}>{historyStats.totalFarmers.toFixed(2)} kg</Text>
                         </View>
                       </>
                     )}
@@ -812,6 +1005,28 @@ export default function CollectionScreen({ navigation, route }: any) {
                 <Text style={styles.successValue}>{lastRecord.weightKg.toFixed(2)} {lastRecord.unit}</Text>
                 <Text style={styles.successName}>{lastRecord.sourceName}</Text>
                 <Text style={styles.successBatch}>{lastRecord.batchNumber}</Text>
+                {printStatus !== "idle" && (
+                  <View style={styles.printRow}>
+                    <Text
+                      style={[
+                        styles.printRowText,
+                        { color: printStatus === "printed" ? colors.success : printStatus === "failed" ? colors.error : colors.textMuted },
+                      ]}
+                    >
+                      {printStatus === "printing" ? "🖨️ Printing receipt…"
+                        : printStatus === "printed" ? "🖨️ Receipt printed"
+                        : printStatus === "failed"  ? `🖨️ Not printed: ${printError}`
+                        : "🖨️ Auto-print is off"}
+                    </Text>
+                    {printStatus !== "printing" && !!lastReceipt && (
+                      <TouchableOpacity style={styles.reprintBtn} onPress={() => runPrint(lastReceipt)}>
+                        <Text style={styles.reprintBtnText}>
+                          {printStatus === "printed" ? "Print again" : "Print receipt"}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
               </>
             )}
             <View style={styles.successStats}>
@@ -839,95 +1054,55 @@ export default function CollectionScreen({ navigation, route }: any) {
         </View>
       </Modal>
 
-      {/* ════ BLE MODAL ════ */}
-      <Modal visible={showBLEModal} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.bleModal}>
-            <View style={styles.bleModalHeader}>
-              <Text style={styles.bleModalTitle}>⚖️ Scale Connection</Text>
-              <TouchableOpacity onPress={() => { setShowBLEModal(false); if (isScanning) stopScan(); }}>
-                <Text style={styles.bleModalClose}>✕</Text>
-              </TouchableOpacity>
-            </View>
+      {/* ════ SCALE SELECTOR MODAL (BLE + Classic) ════ */}
+      <ScaleSelectorModal
+        visible={showBLEModal}
+        onClose={() => { setShowBLEModal(false); if (isScanning) stopScan(); }}
+        activeScaleType={activeScaleType}
+        onChangeScaleType={(t: ScaleType) => {
+          setActiveScaleType(t);
+          if (t === "classic" && !classicIsEnabled) classicEnableBt();
+        }}
+        // ── BLE props ──
+        bleConnectedDevice={connectedDevice}
+        bleSavedDevice={savedDevice}
+        bleScaleReading={scaleReading}
+        bleIsScanning={isScanning}
+        bleIsAutoConnecting={isAutoConnecting}
+        bleDiscoveredDevices={discoveredDevices}
+        onBleStartScan={startScan}
+        onBleStopScan={stopScan}
+        onBleConnect={(device: any) => { connectToDevice(device); setShowBLEModal(false); }}
+        onBleDisconnect={disconnect}
+        onBleClearSaved={() => { clearSavedDevice(); Alert.alert("Cleared", "Saved BLE scale removed."); }}
+        // ── Classic BT props ──
+        classicConnectedDevice={classicConnectedDevice}
+        classicSavedDevice={classicSavedDevice}
+        classicScaleReading={classicScaleReading}
+        classicIsConnecting={classicIsConnecting}
+        classicIsAutoConnecting={classicIsAutoConnecting}
+        classicIsScanning={classicIsScanning}
+        classicIsEnabled={classicIsEnabled}
+        classicError={classicError}
+        classicPairedDevices={classicPairedDevices}
+        onClassicGetPaired={classicGetPaired}
+        onClassicConnect={(device: any) => { classicConnect(device); setShowBLEModal(false); }}
+        onClassicDisconnect={classicDisconnect}
+        onClassicClearSaved={() => { classicClearSaved(); Alert.alert("Cleared", "Saved Classic scale removed."); }}
+        onClassicEnableBt={classicEnableBt}
+      />
 
-            {connectedDevice ? (
-              <View style={styles.bleConnectedCard}>
-                <View style={styles.bleConnectedLeft}>
-                  <View style={[styles.bleConnectedDot, { backgroundColor: colors.success }]} />
-                  <View>
-                    <Text style={styles.bleConnectedName}>{connectedDevice.name || savedDevice?.name || "BLE Scale"}</Text>
-                    <Text style={styles.bleConnectedSub}>
-                      {scaleReading ? `Live: ${scaleReading.weight.toFixed(2)} ${scaleReading.unit} ${scaleReading.isStable ? "✅ Stable" : "⏳"}` : "Connected — waiting for reading..."}
-                    </Text>
-                  </View>
-                </View>
-                <TouchableOpacity style={styles.bleDisconnectBtn} onPress={disconnect}>
-                  <Text style={styles.bleDisconnectText}>Disconnect</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <View style={[styles.bleConnectedCard, { backgroundColor: colors.warningLight, borderColor: colors.warning }]}>
-                <View style={[styles.bleConnectedDot, { backgroundColor: scaleConnecting ? colors.warning : colors.error }]} />
-                <Text style={[styles.bleConnectedName, { color: colors.warning }]}>
-                  {scaleConnecting ? "Auto-connecting..." : savedDevice ? `Saved: ${savedDevice.name}` : "No scale connected"}
-                </Text>
-              </View>
-            )}
-
-            {savedDevice && !connectedDevice && (
-              <View style={styles.bleSavedCard}>
-                <Text style={styles.bleSavedIcon}>💾</Text>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.bleSavedName}>{savedDevice.name}</Text>
-                  <Text style={styles.bleSavedSub}>Saved — auto-connects on next open</Text>
-                </View>
-                <TouchableOpacity onPress={() => { clearSavedDevice(); Alert.alert("Cleared", "Saved scale removed."); }}>
-                  <Text style={styles.bleSavedClear}>Clear</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {!connectedDevice && (
-              <TouchableOpacity style={[styles.bleScanBtn, isScanning && styles.bleScanBtnActive]} onPress={isScanning ? stopScan : startScan}>
-                <Text style={styles.bleScanBtnText}>{isScanning ? "⏹ Stop Scanning" : "🔍 Scan for Scale"}</Text>
-              </TouchableOpacity>
-            )}
-
-            {isScanning && discoveredDevices.length === 0 && (
-              <View style={styles.bleScanningWrap}>
-                <Text style={styles.bleScanningText}>🔄 Scanning for nearby BLE devices...</Text>
-              </View>
-            )}
-
-            {discoveredDevices.length > 0 && (
-              <>
-                <Text style={styles.bleDevicesTitle}>Nearby Devices ({discoveredDevices.length})</Text>
-                <ScrollView style={styles.bleDevicesList} showsVerticalScrollIndicator={false}>
-                  {discoveredDevices.map(device => (
-                    <TouchableOpacity key={device.id} style={styles.bleDeviceCard} onPress={() => { connectToDevice(device); setShowBLEModal(false); }}>
-                      <View style={styles.bleDeviceLeft}>
-                        <Text style={styles.bleDeviceIcon}>⚖️</Text>
-                        <View>
-                          <Text style={styles.bleDeviceName}>{device.name || device.localName || "Unknown Device"}</Text>
-                          <Text style={styles.bleDeviceId}>{device.id.substring(0, 17)}...</Text>
-                        </View>
-                      </View>
-                      <View style={styles.bleConnectBtn}>
-                        <Text style={styles.bleConnectBtnText}>Connect</Text>
-                      </View>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </>
-            )}
-            <View style={{ height: 24 }} />
-          </View>
-        </View>
-      </Modal>
+      {/* ════ RECEIPT PRINTER ════ */}
+      <PrinterModal
+        visible={showPrinterModal}
+        onClose={() => setShowPrinterModal(false)}
+        printer={printer}
+      />
     </View>
   );
 }
 
+// ── SummaryRow ────────────────────────────────────────────────────────────────
 function SummaryRow({ icon, label, value, highlight }: { icon: string; label: string; value: string; highlight?: boolean }) {
   return (
     <View style={sStyles.row}>
@@ -959,14 +1134,14 @@ const styles = StyleSheet.create({
   scaleDot:      { width: 8, height: 8, borderRadius: 4, backgroundColor: "#fff" },
   scalePillText: { fontSize: 11, fontWeight: "800" },
 
-  sourceToggle:          { flexDirection: "row", backgroundColor: "rgba(255,255,255,0.15)", borderRadius: radius.md, padding: 4, gap: 4, marginBottom: spacing.sm },
-  sourceToggleBtn:       { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 10, borderRadius: radius.sm },
-  sourceToggleBtnActive: { backgroundColor: "#fff" },
-  sourceToggleIcon:      { fontSize: 18 },
-  sourceToggleText:      { fontSize: fonts.sizes.sm, fontWeight: "700", color: "rgba(255,255,255,0.85)" },
-  sourceToggleTextActive:{ color: colors.collectorColor },
-  sourceCountBadge:      { paddingHorizontal: 7, paddingVertical: 2, borderRadius: radius.full },
-  sourceCountText:       { fontSize: 10, fontWeight: "800" },
+  sourceToggle:           { flexDirection: "row", backgroundColor: "rgba(255,255,255,0.15)", borderRadius: radius.md, padding: 4, gap: 4, marginBottom: spacing.sm },
+  sourceToggleBtn:        { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 10, borderRadius: radius.sm },
+  sourceToggleBtnActive:  { backgroundColor: "#fff" },
+  sourceToggleIcon:       { fontSize: 18 },
+  sourceToggleText:       { fontSize: fonts.sizes.sm, fontWeight: "700", color: "rgba(255,255,255,0.85)" },
+  sourceToggleTextActive: { color: colors.collectorColor },
+  sourceCountBadge:       { paddingHorizontal: 7, paddingVertical: 2, borderRadius: radius.full },
+  sourceCountText:        { fontSize: 10, fontWeight: "800" },
 
   sessionBanner:     { backgroundColor: "rgba(255,255,255,0.2)", borderRadius: radius.md, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 4 },
   sessionBannerText: { fontSize: fonts.sizes.xs, color: "#fff", fontWeight: "700", textAlign: "center" },
@@ -994,28 +1169,41 @@ const styles = StyleSheet.create({
   emptyTitle: { fontSize: fonts.sizes.lg, fontWeight: "800", color: colors.textPrimary },
   emptySub:   { fontSize: fonts.sizes.sm, color: colors.textMuted, marginTop: 6, textAlign: "center" },
 
-  // Weigh step
   weighHeader:      { backgroundColor: colors.collectorColor, paddingTop: 48, paddingHorizontal: spacing.md, paddingBottom: spacing.sm, borderBottomLeftRadius: 20, borderBottomRightRadius: 20, flexDirection: "row", alignItems: "center", gap: 10, ...shadows.md },
   backBtn:          { backgroundColor: "rgba(255,255,255,0.2)", width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center" },
   backIcon:         { fontSize: 20, color: "#fff", fontWeight: "700" },
   weighHeaderTitle: { fontSize: fonts.sizes.lg, fontWeight: "900", color: "#fff" },
   weighHeaderSub:   { fontSize: fonts.sizes.xs, color: "rgba(255,255,255,0.75)", marginTop: 2 },
 
-  // Sub-tabs
   subTabRow:        { flexDirection: "row", backgroundColor: colors.surface, marginHorizontal: spacing.md, marginTop: spacing.sm, borderRadius: radius.md, padding: 3, gap: 3, ...shadows.sm },
   subTab:           { flex: 1, paddingVertical: 10, alignItems: "center", borderRadius: radius.sm },
   subTabActive:     { backgroundColor: colors.collectorColor },
   subTabText:       { fontSize: 12, fontWeight: "700", color: colors.textMuted },
   subTabTextActive: { color: "#fff" },
 
-  weighContent:  { padding: spacing.md },
-  historyContent:{ padding: spacing.md },
+  weighContent:   { padding: spacing.md },
+  historyContent: { padding: spacing.md },
+
+  scaleTypeToggle:     { flexDirection: "row", backgroundColor: colors.surface, borderRadius: radius.md, padding: 3, gap: 3, marginBottom: spacing.md, ...shadows.sm },
+  scaleTypeBtn:        { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 9, borderRadius: radius.sm },
+  scaleTypeBtnActive:  { backgroundColor: colors.collectorColor },
+  scaleTypeIcon:       { fontSize: 16 },
+  scaleTypeText:       { fontSize: 12, fontWeight: "700", color: colors.textMuted },
+  scaleTypeTextActive: { color: "#fff" },
+  scaleTypeActiveDot:  { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.success, marginLeft: 2 },
+
+  btEnableCard:  { flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: colors.primaryPale, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.sm, borderWidth: 1, borderColor: colors.primary + "50" },
+  btEnableIcon:  { fontSize: 24 },
+  btEnableTitle: { fontSize: fonts.sizes.sm, fontWeight: "800", color: colors.primary },
+  btEnableSub:   { fontSize: fonts.sizes.xs, color: colors.textMuted, marginTop: 1 },
+  btEnableArrow: { fontSize: 18, color: colors.primary, fontWeight: "700" },
+  btErrorCard:   { backgroundColor: colors.errorLight, borderRadius: radius.md, padding: spacing.sm, marginBottom: spacing.sm },
+  btErrorText:   { fontSize: fonts.sizes.xs, color: colors.error, fontWeight: "600", textAlign: "center" },
 
   sourceInfoCard:       { backgroundColor: colors.collectorLight, borderRadius: radius.lg, padding: spacing.md, flexDirection: "row", alignItems: "flex-start", gap: 12, marginBottom: spacing.md, borderWidth: 1.5, borderColor: colors.collectorColor + "40" },
   sourceInfoAvatar:     { width: 52, height: 52, borderRadius: 26, alignItems: "center", justifyContent: "center" },
   sourceInfoAvatarText: { fontSize: fonts.sizes.xl, fontWeight: "900" },
   sourceInfoName:       { fontSize: fonts.sizes.lg, fontWeight: "900", color: colors.textPrimary },
-  sourceInfoType:       { fontSize: fonts.sizes.xs, color: colors.collectorColor, fontWeight: "700", marginTop: 2 },
   sourceInfoMeta:       { fontSize: fonts.sizes.xs, color: colors.textMuted, marginTop: 2 },
   personTodayBadge:     { backgroundColor: colors.collectorColor + "20", borderRadius: radius.sm, paddingHorizontal: 8, paddingVertical: 3, marginTop: 6, alignSelf: "flex-start" },
   personTodayText:      { fontSize: 10, color: colors.collectorColor, fontWeight: "700" },
@@ -1034,11 +1222,13 @@ const styles = StyleSheet.create({
   scaleOfflineIcon: { fontSize: 48, marginBottom: 8 },
   scaleOfflineText: { fontSize: fonts.sizes.md, fontWeight: "700", color: colors.textMuted },
   scaleOfflineSub:  { fontSize: fonts.sizes.xs, color: colors.textMuted, marginTop: 4, textAlign: "center", paddingHorizontal: spacing.md },
+
   capturedBanner:      { backgroundColor: colors.successLight, borderTopWidth: 1, borderTopColor: colors.success + "40", paddingHorizontal: spacing.md, paddingVertical: 10, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   capturedBannerLabel: { fontSize: 10, color: colors.success, fontWeight: "700" },
   capturedBannerValue: { fontSize: fonts.sizes.lg, fontWeight: "900", color: colors.success },
   capturedBadge:       { paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.full },
   capturedBadgeText:   { fontSize: 10, color: "#fff", fontWeight: "800" },
+
   scaleActions:    { flexDirection: "row", gap: spacing.sm, padding: spacing.md, paddingTop: 0 },
   captureBtn:      { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 12, borderRadius: radius.md },
   captureBtnIcon:  { fontSize: 18 },
@@ -1054,12 +1244,12 @@ const styles = StyleSheet.create({
   manualInput:       { flex: 1, fontSize: 28, fontWeight: "900", color: colors.primary },
   manualInputSuffix: { fontSize: fonts.sizes.md, color: colors.textMuted, fontWeight: "600" },
 
-  batchCard:       { backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.md, marginBottom: spacing.sm, flexDirection: "row", alignItems: "center", ...shadows.sm },
-  batchCardLeft:   { flex: 1 },
-  batchCardLabel:  { fontSize: fonts.sizes.xs, color: colors.textMuted, fontWeight: "600" },
-  batchCardValue:  { fontSize: fonts.sizes.md, fontWeight: "800", color: colors.textPrimary, marginTop: 2 },
-  batchRefreshBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primaryPale, alignItems: "center", justifyContent: "center" },
-  batchRefreshIcon:{ fontSize: 18 },
+  batchCard:        { backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.md, marginBottom: spacing.sm, flexDirection: "row", alignItems: "center", ...shadows.sm },
+  batchCardLeft:    { flex: 1 },
+  batchCardLabel:   { fontSize: fonts.sizes.xs, color: colors.textMuted, fontWeight: "600" },
+  batchCardValue:   { fontSize: fonts.sizes.md, fontWeight: "800", color: colors.textPrimary, marginTop: 2 },
+  batchRefreshBtn:  { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primaryPale, alignItems: "center", justifyContent: "center" },
+  batchRefreshIcon: { fontSize: 18 },
 
   notesCard:   { backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.md, marginBottom: spacing.sm, ...shadows.sm },
   notesLabel:  { fontSize: fonts.sizes.xs, color: colors.textMuted, fontWeight: "600", marginBottom: 8 },
@@ -1072,7 +1262,6 @@ const styles = StyleSheet.create({
   saveBtnDisabled: { backgroundColor: colors.border },
   saveBtnText:     { fontSize: fonts.sizes.sm, fontWeight: "900", color: "#fff", textAlign: "center", paddingHorizontal: spacing.sm },
 
-  // ── History ──
   personGroup:            { backgroundColor: colors.surface, borderRadius: radius.lg, marginBottom: spacing.sm, overflow: "hidden", ...shadows.md },
   personGroupHighlighted: { borderWidth: 2, borderColor: colors.collectorColor },
   personGroupHeader:      { flexDirection: "row", alignItems: "center", gap: 12, padding: spacing.md, backgroundColor: colors.background },
@@ -1098,7 +1287,6 @@ const styles = StyleSheet.create({
   personSubtotalLabel: { fontSize: fonts.sizes.xs, fontWeight: "700", color: colors.textSecondary },
   personSubtotalValue: { fontSize: fonts.sizes.md, fontWeight: "900" },
 
-  // Grand totals
   grandTotalsCard:      { backgroundColor: colors.surface, borderRadius: radius.xl, padding: spacing.md, marginBottom: spacing.md, borderWidth: 2, borderColor: colors.collectorColor, ...shadows.lg },
   grandTotalsTitle:     { fontSize: fonts.sizes.md, fontWeight: "900", color: colors.textPrimary, marginBottom: spacing.md },
   grandTotalRow:        { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 10 },
@@ -1111,7 +1299,6 @@ const styles = StyleSheet.create({
   grandTotalFinalRow:   { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 14, marginTop: 4, borderTopWidth: 2, borderTopColor: colors.collectorColor + "40" },
   grandTotalFinalValue: { fontSize: 28, fontWeight: "900", color: colors.collectorColor },
 
-  // Success
   successOverlay:          { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", alignItems: "center", justifyContent: "center" },
   successCard:             { backgroundColor: colors.surface, borderRadius: 28, padding: spacing.xl, alignItems: "center", width: width - 64, ...shadows.lg },
   successEmoji:            { fontSize: 64, marginBottom: 12 },
@@ -1130,42 +1317,12 @@ const styles = StyleSheet.create({
   successBtnSecondaryText: { fontSize: fonts.sizes.sm, fontWeight: "800", color: colors.primary },
   successBtnHistory:       { backgroundColor: colors.border, borderRadius: radius.md, paddingVertical: 12, alignItems: "center" },
   successBtnHistoryText:   { fontSize: fonts.sizes.sm, fontWeight: "700", color: colors.textSecondary },
+  printRow:                { alignItems: "center", marginTop: 8, marginBottom: 4 },
+  printRowText:            { fontSize: fonts.sizes.sm, fontWeight: "700", textAlign: "center" },
+  reprintBtn:              { marginTop: 6, paddingHorizontal: 14, paddingVertical: 6, borderRadius: radius.full, borderWidth: 1.5, borderColor: colors.collectorColor },
+  reprintBtnText:          { fontSize: fonts.sizes.sm, fontWeight: "800", color: colors.collectorColor },
 
-  // BLE modal
-  modalOverlay:     { flex: 1, backgroundColor: colors.overlay, justifyContent: "flex-end" },
-  bleModal:         { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: spacing.md, maxHeight: height * 0.75 },
-  bleModalHeader:   { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: spacing.md },
-  bleModalTitle:    { fontSize: fonts.sizes.lg, fontWeight: "900", color: colors.textPrimary },
-  bleModalClose:    { fontSize: 20, color: colors.textMuted, padding: 4 },
-  bleConnectedCard: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: colors.successLight, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.sm, borderWidth: 1.5, borderColor: colors.success + "40" },
-  bleConnectedLeft: { flexDirection: "row", alignItems: "center", gap: 12, flex: 1 },
-  bleConnectedDot:  { width: 12, height: 12, borderRadius: 6 },
-  bleConnectedName: { fontSize: fonts.sizes.sm, fontWeight: "800", color: colors.textPrimary },
-  bleConnectedSub:  { fontSize: fonts.sizes.xs, color: colors.textMuted, marginTop: 2 },
-  bleDisconnectBtn: { backgroundColor: colors.errorLight, paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius.full },
-  bleDisconnectText:{ fontSize: 11, color: colors.error, fontWeight: "700" },
-  bleSavedCard:     { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: colors.primaryPale, borderRadius: radius.md, padding: spacing.sm, marginBottom: spacing.sm },
-  bleSavedIcon:     { fontSize: 20 },
-  bleSavedName:     { fontSize: fonts.sizes.sm, fontWeight: "700", color: colors.textPrimary },
-  bleSavedSub:      { fontSize: fonts.sizes.xs, color: colors.textMuted, marginTop: 1 },
-  bleSavedClear:    { fontSize: 11, color: colors.error, fontWeight: "700", paddingHorizontal: 8 },
-  bleScanBtn:       { backgroundColor: colors.primary, borderRadius: radius.md, paddingVertical: 14, alignItems: "center", marginBottom: spacing.sm },
-  bleScanBtnActive: { backgroundColor: colors.error },
-  bleScanBtnText:   { fontSize: fonts.sizes.sm, fontWeight: "800", color: "#fff" },
-  bleScanningWrap:  { alignItems: "center", paddingVertical: spacing.md },
-  bleScanningText:  { fontSize: fonts.sizes.sm, color: colors.textMuted, fontWeight: "600" },
-  bleDevicesTitle:  { fontSize: fonts.sizes.sm, fontWeight: "800", color: colors.textPrimary, marginBottom: spacing.sm },
-  bleDevicesList:   { maxHeight: 200 },
-  bleDeviceCard:    { flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: colors.background, borderRadius: radius.md, padding: spacing.sm, marginBottom: 6 },
-  bleDeviceLeft:    { flexDirection: "row", alignItems: "center", gap: 10, flex: 1 },
-  bleDeviceIcon:    { fontSize: 22 },
-  bleDeviceName:    { fontSize: fonts.sizes.sm, fontWeight: "700", color: colors.textPrimary },
-  bleDeviceId:      { fontSize: fonts.sizes.xs, color: colors.textMuted, marginTop: 1 },
-  bleConnectBtn:    { backgroundColor: colors.primary, paddingHorizontal: 14, paddingVertical: 7, borderRadius: radius.full },
-  bleConnectBtnText:{ fontSize: 11, color: "#fff", fontWeight: "800" },
-
-  // ── Offline banner ──
-  offlineBanner:     { backgroundColor: "#7C3AED20", borderWidth: 1, borderColor: "#7C3AED50", paddingHorizontal: 12, paddingVertical: 8, marginBottom: 4 },
-  offlineBannerText: { fontSize: fonts.sizes.xs, color: "#7C3AED", fontWeight: "700", textAlign: "center" },
-  successOfflineNote:{ fontSize: fonts.sizes.xs, color: colors.textMuted, marginBottom: 8 },
+  offlineBanner:      { backgroundColor: "#7C3AED20", borderWidth: 1, borderColor: "#7C3AED50", paddingHorizontal: 12, paddingVertical: 8, marginBottom: 4 },
+  offlineBannerText:  { fontSize: fonts.sizes.xs, color: "#7C3AED", fontWeight: "700", textAlign: "center" },
+  successOfflineNote: { fontSize: fonts.sizes.xs, color: colors.textMuted, marginBottom: 8 },
 });

@@ -3,41 +3,27 @@ import React, { useEffect, useState } from "react";
 import { NavigationContainer }        from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { View, StyleSheet }           from "react-native";
-import AsyncStorage                   from "@react-native-async-storage/async-storage";
 import { onAuthStateChanged, getCurrentUserProfile } from "../firebase/auth";
 import { User }    from "../types";
 import { colors }  from "../theme";
 import TeaLoader   from "../components/TeaLoader";
 import { useNetworkSync } from "../hooks/useNetworkSync";
 
-import OnboardingScreen   from "../screens/auth/OnboardingScreen";
-import LoginScreen        from "../screens/auth/LoginScreen";
-import AdminNavigator     from "./AdminNavigator";
-import CollectorNavigator from "./CollectorNavigator";
-import SalesNavigator     from "./SalesNavigator";
+import OnboardingScreen    from "../screens/auth/OnboardingScreen";
+import LoginScreen         from "../screens/auth/LoginScreen";
+import AdminNavigator      from "./AdminNavigator";
+import CollectorNavigator  from "./CollectorNavigator";
+import SalesNavigator      from "./SalesNavigator";
 import SupervisorDashboard from "../screens/supervisor/SupervisorDashboard";
 
 const Stack = createNativeStackNavigator();
-const ONBOARDING_KEY = "teafarm_seen_onboarding";
 
 export default function Navigation() {
-  const [user,         setUser]         = useState<User | null>(null);
-  const [loading,      setLoading]      = useState(true);
-  const [seenOnboarding, setSeenOnboarding] = useState<boolean | null>(null);
+  const [user,    setUser]    = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
   useNetworkSync();
+
   useEffect(() => {
-    // Check onboarding flag AND auth state in parallel
-    const checkOnboarding = async () => {
-      try {
-        const val = await AsyncStorage.getItem(ONBOARDING_KEY);
-        setSeenOnboarding(val === "true");
-      } catch {
-        setSeenOnboarding(false); // default: show onboarding
-      }
-    };
-
-    checkOnboarding();
-
     const unsubscribe = onAuthStateChanged(async (firebaseUser: any) => {
       if (firebaseUser) {
         try {
@@ -47,12 +33,10 @@ export default function Navigation() {
       } else { setUser(null); }
       setLoading(false);
     });
-
     return unsubscribe;
   }, []);
 
-  // Show loader until both auth state AND onboarding flag are resolved
-  if (loading || seenOnboarding === null) {
+  if (loading) {
     return (
       <View style={styles.loading}>
         <TeaLoader message="TeaFarm Pro" subMessage="Loading your farm..." />
@@ -60,15 +44,10 @@ export default function Navigation() {
     );
   }
 
-  // ── Decide the initial route ──────────────────────────────────────────────
-  // 1. User already logged in  → go straight to their home screen
-  // 2. User not logged in + hasn't seen onboarding → show Onboarding
-  // 3. User not logged in + has seen onboarding    → show Login
-  const initialRoute = user
-    ? getHomeScreen(user.role)
-    : !seenOnboarding
-    ? "Onboarding"
-    : "Login";
+  // ── Decide initial route ──────────────────────────────────────────────────
+  // Logged-in user  → straight to their home screen (skip onboarding)
+  // Not logged in   → always show Onboarding first, every launch
+  const initialRoute = user ? getHomeScreen(user.role) : "Onboarding";
 
   return (
     <NavigationContainer>
@@ -76,16 +55,14 @@ export default function Navigation() {
         initialRouteName={initialRoute}
         screenOptions={{ headerShown: false, animation: "fade" }}
       >
-        {/* ── Onboarding — shown once on first install ── */}
+        {/* ── Onboarding — shown every launch when not logged in ── */}
         <Stack.Screen name="Onboarding" component={OnboardingScreen} />
 
         {/* ── Auth ── */}
         <Stack.Screen name="Login" component={LoginScreen} />
 
-        {/* ── Admin — has its own tab navigator ── */}
-        <Stack.Screen name="Admin" component={AdminNavigator} />
-
-        {/* ── Employee screens — all accessible to admin too ── */}
+        {/* ── Role home screens ── */}
+        <Stack.Screen name="Admin"      component={AdminNavigator} />
         <Stack.Screen name="Collector"  component={CollectorNavigator} />
         <Stack.Screen name="Sales"      component={SalesNavigator} />
         <Stack.Screen name="Supervisor" component={SupervisorDashboard} />

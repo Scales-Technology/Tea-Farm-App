@@ -44,9 +44,9 @@
     "main": "node_modules/expo/AppEntry.js",
     "extra": {
       "eas": {
-        "projectId": "b8db69ae-15e5-419e-8f9b-dbaa708672bc"
+        "projectId": "3033fb3f-7952-4ad5-8d7e-9af285c125d6"
       }
     },
-    "owner": "thetoo2"
+    "owner": "johnteez"
   }
 }
